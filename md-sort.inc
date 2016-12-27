@@ -65,7 +65,6 @@ stock SortDeepArray_Entry(&{Float, String, string, _}:cmp1, &_:cmp2, size, cmp_t
 }
 
 stock _SortDeepArray(array[][], left, right) {
-	
 	new
 		sp;
 _SortDeepArray_recurse:
@@ -75,36 +74,115 @@ _SortDeepArray_recurse:
 		pivot_idx = (left + right) / 2,
 		pivot = array[pivot_idx][g_sort_cmp_offset]
 	;
-	
-	if (g_sort_cmp_type == 'f' && Float:pivot != Float:pivot) {
-		// Pivot is NaN, put everything else before it - NaN ALWAYS goes at the
-		// end of the array, regardless of sort order.
-		left_hold = right;
-		right_hold = right - 1;
-		ExchangeArraySlots(array, pivot_idx, right);
-	} else while (left_hold <= right_hold) {
-		switch (g_sort_cmp_type) {
-			case 'f': {
-				if (g_sort_order == SORT_ASC) {
-					while (Float:pivot > Float:array[left_hold][g_sort_cmp_offset]) left_hold++;
-					while (Float:pivot < Float:array[right_hold][g_sort_cmp_offset]) right_hold--;
-				} else {
-					while (Float:array[left_hold][g_sort_cmp_offset] > Float:pivot) left_hold++;
-					while (Float:array[right_hold][g_sort_cmp_offset] < Float:pivot) right_hold--;
-				}
+	if (left >= right)
+		goto _SortDeepArray_return;
+	switch (g_sort_cmp_type) {
+	case 'f':
+		if (Float:pivot == Float:pivot) while (left_hold <= right_hold) {
+			// Floats do not have the small array optimisation applied as they
+			// are more complex with NaNs handled.
+			if (g_sort_order == SORT_ASC) {
+				while (Float:pivot > Float:array[left_hold][g_sort_cmp_offset]) left_hold++;
+				while (Float:pivot < Float:array[right_hold][g_sort_cmp_offset]) right_hold--;
+			} else {
+				while (Float:array[left_hold][g_sort_cmp_offset] > Float:pivot) left_hold++;
+				while (Float:array[right_hold][g_sort_cmp_offset] < Float:pivot) right_hold--;
 			}
-			
-			case 's': {
-				if (g_sort_order == SORT_ASC) {
-					while (strcmp(array[left_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) < 0) left_hold++;
-					while (strcmp(array[right_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) > 0) right_hold--;
-				} else {
-					while (strcmp(array[left_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) > 0) left_hold++;
-					while (strcmp(array[right_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) < 0) right_hold--;
-				}
+			if (left_hold <= right_hold) {
+				ExchangeArraySlots(array, left_hold, right_hold);
+				left_hold++, right_hold--;
 			}
-			
-			default: {
+		} else {
+			// Pivot is NaN, put everything else before it - NaN ALWAYS goes at
+			// the end of the array, regardless of sort order.
+			left_hold = right;
+			right_hold = right - 1;
+			ExchangeArraySlots(array, pivot_idx, right);
+		}
+	case 's':
+		while (left_hold <= right_hold) {
+			if (g_sort_order == SORT_ASC) {
+				while (strcmp(array[left_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) < 0) left_hold++;
+				while (strcmp(array[right_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) > 0) right_hold--;
+			} else {
+				while (strcmp(array[left_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) > 0) left_hold++;
+				while (strcmp(array[right_hold][g_sort_cmp_offset], array[pivot_idx][g_sort_cmp_offset], g_sort_ignorecase) < 0) right_hold--;
+			}
+			if (left_hold <= right_hold) {
+				ExchangeArraySlots(array, left_hold, right_hold);
+				left_hold++, right_hold--;
+			}
+		}
+	default: {
+		switch (right - left) {
+		case 1: {
+			if (g_sort_order == SORT_ASC) {
+				if (array[right][g_sort_cmp_offset] < array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, right);
+			} else {
+				if (array[right][g_sort_cmp_offset] > array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, right);
+			}
+			goto _SortDeepArray_return;
+		}
+		case 2: {
+			pivot = left + 1;
+			if (g_sort_order == SORT_ASC) {
+				if (array[pivot][g_sort_cmp_offset] < array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+				if (array[right][g_sort_cmp_offset] < array[pivot][g_sort_cmp_offset])
+					ExchangeArraySlots(array, right, pivot);
+				if (array[pivot][g_sort_cmp_offset] < array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+			} else {
+				if (array[pivot][g_sort_cmp_offset] > array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+				if (array[right][g_sort_cmp_offset] > array[pivot][g_sort_cmp_offset])
+					ExchangeArraySlots(array, right, pivot);
+				if (array[pivot][g_sort_cmp_offset] > array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+			}
+			goto _SortDeepArray_return;
+		}
+		case 3: {
+			// This is bubble sort.  Yes, you heard right!  It is based on swaps
+			// as this array manipulation code also is.  It is renowned for
+			// being slow, but at small sizes in the worst case it only takes
+			// one less comparison (6 vs 5) than insertion sort or merge sort,
+			// while being vastly less complex.
+			pivot = left + 1;
+			pivot_idx = right - 1;
+			if (g_sort_order == SORT_ASC) {
+				if (array[pivot][g_sort_cmp_offset] < array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+				if (array[pivot_idx][g_sort_cmp_offset] < array[pivot][g_sort_cmp_offset])
+					ExchangeArraySlots(array, pivot_idx, pivot);
+				if (array[right][g_sort_cmp_offset] < array[pivot_idx][g_sort_cmp_offset])
+					ExchangeArraySlots(array, right, pivot_idx);
+				if (array[pivot][g_sort_cmp_offset] < array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+				if (array[pivot_idx][g_sort_cmp_offset] < array[pivot][g_sort_cmp_offset])
+					ExchangeArraySlots(array, pivot_idx, pivot);
+				if (array[pivot][g_sort_cmp_offset] < array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+			} else {
+				if (array[pivot][g_sort_cmp_offset] > array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+				if (array[pivot_idx][g_sort_cmp_offset] > array[pivot][g_sort_cmp_offset])
+					ExchangeArraySlots(array, pivot_idx, pivot);
+				if (array[right][g_sort_cmp_offset] > array[pivot_idx][g_sort_cmp_offset])
+					ExchangeArraySlots(array, right, pivot_idx);
+				if (array[pivot][g_sort_cmp_offset] > array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+				if (array[pivot_idx][g_sort_cmp_offset] > array[pivot][g_sort_cmp_offset])
+					ExchangeArraySlots(array, pivot_idx, pivot);
+				if (array[pivot][g_sort_cmp_offset] > array[left][g_sort_cmp_offset])
+					ExchangeArraySlots(array, left, pivot);
+			}
+			goto _SortDeepArray_return;
+		}
+		default: {
+			while (left_hold <= right_hold) {
 				if (g_sort_order == SORT_ASC) {
 					while (array[left_hold][g_sort_cmp_offset] < pivot) left_hold++;
 					while (array[right_hold][g_sort_cmp_offset] > pivot) right_hold--;
@@ -112,16 +190,14 @@ _SortDeepArray_recurse:
 					while (array[left_hold][g_sort_cmp_offset] > pivot) left_hold++;
 					while (array[right_hold][g_sort_cmp_offset] < pivot) right_hold--;
 				}
+				if (left_hold <= right_hold) {
+					ExchangeArraySlots(array, left_hold, right_hold);
+					
+					left_hold++, right_hold--;
+				}
 			}
-		}
-		
-		if (left_hold <= right_hold) {
-			ExchangeArraySlots(array, left_hold, right_hold);
-			
-			left_hold++, right_hold--;
-		}
-	}
-	
+		}}
+	}}
 	if (left_hold < right) {
 		g_sort_stack[sp++] = left_hold;
 		g_sort_stack[sp++] = right;
@@ -130,6 +206,7 @@ _SortDeepArray_recurse:
 		right = right_hold;
 		goto _SortDeepArray_recurse;
 	}
+_SortDeepArray_return:
 	if (sp) {
 		right = g_sort_stack[--sp];
 		left = g_sort_stack[--sp];
